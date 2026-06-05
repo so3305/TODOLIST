@@ -7,6 +7,7 @@ import {
   CollisionDetection,
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragOverlay,
   DragStartEvent,
   KeyboardSensor,
@@ -454,6 +455,7 @@ export default function TeamPage() {
   const draggingRef = useRef(false);
   const categoriesRef = useRef(categories);
   useEffect(() => { categoriesRef.current = categories; }, [categories]);
+  const categoriesBeforeDragRef = useRef<Category[] | null>(null);
 
   const undoStackRef = useRef<Snapshot[]>([]);
   const redoStackRef = useRef<Snapshot[]>([]);
@@ -705,35 +707,55 @@ export default function TeamPage() {
   const handleDragStart = (e: DragStartEvent) => {
     draggingRef.current = true;
     setActiveDragId(String(e.active.id));
+    // フォルダドラッグ開始時に現在の順序を保存（undo用）
+    if (categoriesRef.current.some(c => c.id === String(e.active.id))) {
+      categoriesBeforeDragRef.current = [...categoriesRef.current];
+    }
+  };
+
+  // ドラッグ中にフォルダ順序をリアルタイム更新（プレビューと結果を一致させる）
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const aId = String(active.id);
+    const oId = String(over.id);
+    if (!categoriesRef.current.some(c => c.id === aId)) return;
+    setCategories(prev => {
+      const oldIdx = prev.findIndex(c => c.id === aId);
+      const newIdx = prev.findIndex(c => c.id === oId);
+      if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return prev;
+      return arrayMove(prev, oldIdx, newIdx);
+    });
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
 
-    if (!over || active.id === over.id) {
-      draggingRef.current = false;
-      return;
-    }
-
     const activeId = String(active.id);
-    const overId = String(over.id);
 
-    // フォルダの並び替え
-    const folderOldIdx = categories.findIndex(c => c.id === activeId);
-    if (folderOldIdx !== -1) {
-      const folderNewIdx = categories.findIndex(c => c.id === overId);
-      if (folderNewIdx !== -1 && folderOldIdx !== folderNewIdx) {
-        saveSnapshot(todos, categories);
-        const reordered = arrayMove(categories, folderOldIdx, folderNewIdx);
-        setCategories(reordered);
-        await Promise.all(reordered.map((c, i) =>
+    // フォルダの並び替え（handleDragOverで既に並び替え済み、Supabaseに保存するだけ）
+    if (categoriesBeforeDragRef.current) {
+      const before = categoriesBeforeDragRef.current;
+      const current = categoriesRef.current;
+      categoriesBeforeDragRef.current = null;
+      const changed = before.some((c, i) => c.id !== current[i]?.id);
+      if (changed) {
+        saveSnapshot(todos, before);
+        await Promise.all(current.map((c, i) =>
           supabase.from("categories").update({ order_index: i }).eq("id", c.id)
         ));
       }
       draggingRef.current = false;
       return;
     }
+
+    if (!over || active.id === over.id) {
+      draggingRef.current = false;
+      return;
+    }
+
+    const overId = String(over.id);
 
     // タスクの並び替え・移動
     const activeTask = todos.find(t => t.id === activeId);
@@ -831,7 +853,7 @@ export default function TeamPage() {
       </div>
 
       <div className="max-w-4xl mx-auto p-4">
-        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <div className="flex gap-4">
 
             {/* PC フォルダサイドバー */}
