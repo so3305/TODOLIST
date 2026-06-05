@@ -597,7 +597,7 @@ export default function TeamPage() {
       {/* ヘッダー */}
       <div className="border-b border-slate-200 bg-white/80 backdrop-blur px-4 py-3 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-bold text-slate-800">タスク管理</h1>
+          <a href="/" className="text-lg font-bold text-slate-800 hover:text-slate-600 transition-colors">タスク管理</a>
           <button
             onClick={copyUrl}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
