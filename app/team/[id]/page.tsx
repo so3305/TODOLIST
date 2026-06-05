@@ -11,6 +11,7 @@ import {
   DragOverlay,
   DragStartEvent,
   KeyboardSensor,
+  Modifier,
   PointerSensor,
   closestCenter,
   useDroppable,
@@ -28,6 +29,20 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase";
 import type { Category, Todo } from "@/lib/types";
+
+const snapCenterToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
+  if (draggingNodeRect && activatorEvent) {
+    const e = activatorEvent as MouseEvent | TouchEvent;
+    const cx = "touches" in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+    const cy = "touches" in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+    return {
+      ...transform,
+      x: transform.x + cx - (draggingNodeRect.left + draggingNodeRect.width / 2),
+      y: transform.y + cy - (draggingNodeRect.top + draggingNodeRect.height / 2),
+    };
+  }
+  return transform;
+};
 
 const CATEGORY_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6",
@@ -993,7 +1008,7 @@ export default function TeamPage() {
             </div>
           </div>
 
-          <DragOverlay>
+          <DragOverlay modifiers={activeDragCategory ? [snapCenterToCursor] : []}>
             {activeDragCategory && (
               <div className="flex items-center gap-1.5 px-2 py-2 rounded-lg bg-slate-800 text-white shadow-xl select-none cursor-grabbing opacity-95">
                 <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
