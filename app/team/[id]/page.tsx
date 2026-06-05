@@ -193,10 +193,10 @@ function SortableFolder({
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.15)" : undefined }}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 }}
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2 py-2 rounded-lg cursor-pointer transition-all select-none flex-shrink-0 ${
-        isDragging ? "bg-white border border-slate-300 opacity-90" : isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
+        isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
       }`}
     >
       {/* ドラッグハンドル（タスクと同じパターン） */}
@@ -713,20 +713,7 @@ export default function TeamPage() {
     }
   };
 
-  // ドラッグ中にフォルダ順序をリアルタイム更新（プレビューと結果を一致させる）
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    const aId = String(active.id);
-    const oId = String(over.id);
-    if (!categoriesRef.current.some(c => c.id === aId)) return;
-    setCategories(prev => {
-      const oldIdx = prev.findIndex(c => c.id === aId);
-      const newIdx = prev.findIndex(c => c.id === oId);
-      if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return prev;
-      return arrayMove(prev, oldIdx, newIdx);
-    });
-  };
+  const handleDragOver = (_event: DragOverEvent) => {};
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -734,17 +721,22 @@ export default function TeamPage() {
 
     const activeId = String(active.id);
 
-    // フォルダの並び替え（handleDragOverで既に並び替え済み、Supabaseに保存するだけ）
+    // フォルダの並び替え
     if (categoriesBeforeDragRef.current) {
       const before = categoriesBeforeDragRef.current;
-      const current = categoriesRef.current;
       categoriesBeforeDragRef.current = null;
-      const changed = before.some((c, i) => c.id !== current[i]?.id);
-      if (changed) {
-        saveSnapshot(todos, before);
-        await Promise.all(current.map((c, i) =>
-          supabase.from("categories").update({ order_index: i }).eq("id", c.id)
-        ));
+      if (over && active.id !== over.id) {
+        const oId = String(over.id);
+        const oldIdx = before.findIndex(c => c.id === activeId);
+        const newIdx = before.findIndex(c => c.id === oId);
+        if (oldIdx !== -1 && newIdx !== -1) {
+          saveSnapshot(todos, before);
+          const reordered = arrayMove(before, oldIdx, newIdx).map((c, i) => ({ ...c, order_index: i }));
+          setCategories(reordered);
+          await Promise.all(reordered.map(c =>
+            supabase.from("categories").update({ order_index: c.order_index }).eq("id", c.id)
+          ));
+        }
       }
       draggingRef.current = false;
       return;
@@ -1001,8 +993,17 @@ export default function TeamPage() {
             </div>
           </div>
 
-          {/* ドラッグ中ゴースト（タスクのみ。フォルダは要素自体が動く） */}
           <DragOverlay>
+            {activeDragCategory && (
+              <div className="flex items-center gap-1.5 px-2 py-2 rounded-lg bg-slate-800 text-white shadow-xl select-none cursor-grabbing opacity-95">
+                <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-12a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+                </svg>
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: activeDragCategory.color }} />
+                <span className="truncate text-xs font-medium">{activeDragCategory.name}</span>
+                <span className="text-xs tabular-nums text-slate-300">{folderCount(activeDragCategory.id)}</span>
+              </div>
+            )}
             {activeDragTodo && !activeDragCategory && (
               selectedIds.has(activeDragTodo.id) && selectedIds.size > 1 ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-600 border border-indigo-500 shadow-xl text-sm text-white opacity-95">
