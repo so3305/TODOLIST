@@ -192,10 +192,10 @@ function SortableFolder({
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 }}
+      style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.15)" : undefined }}
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2 py-2 rounded-lg cursor-pointer transition-all select-none flex-shrink-0 ${
-        isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
+        isDragging ? "bg-white border border-slate-300 opacity-90" : isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
       }`}
     >
       {/* ドラッグハンドル（タスクと同じパターン） */}
@@ -979,14 +979,8 @@ export default function TeamPage() {
             </div>
           </div>
 
-          {/* ドラッグ中ゴースト */}
+          {/* ドラッグ中ゴースト（タスクのみ。フォルダは要素自体が動く） */}
           <DragOverlay>
-            {activeDragCategory && (
-              <div className="flex items-center gap-1.5 px-2 py-2 rounded-lg bg-white border border-slate-300 shadow-xl opacity-95 select-none">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: activeDragCategory.color }} />
-                <span className="text-xs font-medium">{activeDragCategory.name}</span>
-              </div>
-            )}
             {activeDragTodo && !activeDragCategory && (
               selectedIds.has(activeDragTodo.id) && selectedIds.size > 1 ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-600 border border-indigo-500 shadow-xl text-sm text-white opacity-95">
