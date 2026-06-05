@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CollisionDetection,
   DndContext,
   DragEndEvent,
   DragOverEvent,
@@ -20,7 +19,6 @@ import {
 import {
   SortableContext,
   arrayMove,
-  horizontalListSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -179,45 +177,54 @@ function FolderMenu({
   );
 }
 
-// ── フォルダ（タスクと同じドラッグパターン） ────────────────────
-function SortableFolder({
+// ── フォルダ（上下ボタンで並び替え） ────────────────────────────
+function FolderItem({
   category, isActive, taskCount, onClick, onDelete, onEdit, onColorChange,
+  onMoveUp, onMoveDown, isFirst, isLast,
 }: {
   category: Category; isActive: boolean; taskCount: number;
   onClick: () => void; onDelete: () => void;
   onEdit: (id: string, name: string) => void;
   onColorChange: (id: string, color: string) => void;
+  onMoveUp: () => void; onMoveDown: () => void;
+  isFirst: boolean; isLast: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: category.id });
-
   return (
     <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 }}
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2 py-2 rounded-lg cursor-pointer transition-all select-none flex-shrink-0 ${
         isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
       }`}
     >
-      {/* ドラッグハンドル（タスクと同じパターン） */}
-      <button
-        {...attributes}
-        {...listeners}
-        onClick={e => e.stopPropagation()}
-        className={`cursor-grab active:cursor-grabbing flex-shrink-0 touch-none p-0.5 -m-0.5 ${
-          isActive ? "text-slate-400" : "text-slate-300 hover:text-slate-500"
-        }`}
-      >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-12a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
-        </svg>
-      </button>
       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: category.color }} />
       <span className="truncate text-xs font-medium flex-1 min-w-0">{category.name}</span>
       <span className={`text-xs tabular-nums flex-shrink-0 ${isActive ? "text-slate-300" : "text-slate-400"}`}>
         {taskCount}
       </span>
+      <div className="flex flex-col flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onMoveUp}
+          disabled={isFirst}
+          className={`p-0.5 disabled:opacity-20 disabled:cursor-not-allowed ${
+            isActive ? "text-slate-400 hover:text-white" : "text-slate-300 hover:text-slate-600"
+          }`}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+        <button
+          onClick={onMoveDown}
+          disabled={isLast}
+          className={`p-0.5 disabled:opacity-20 disabled:cursor-not-allowed ${
+            isActive ? "text-slate-400 hover:text-white" : "text-slate-300 hover:text-slate-600"
+          }`}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
       <FolderMenu
         category={category} isActive={isActive}
         onEdit={onEdit} onColorChange={onColorChange} onDelete={onDelete}
@@ -456,7 +463,6 @@ export default function TeamPage() {
   const draggingRef = useRef(false);
   const categoriesRef = useRef(categories);
   useEffect(() => { categoriesRef.current = categories; }, [categories]);
-  const categoriesBeforeDragRef = useRef<Category[] | null>(null);
 
   const undoStackRef = useRef<Snapshot[]>([]);
   const redoStackRef = useRef<Snapshot[]>([]);
@@ -589,19 +595,6 @@ export default function TeamPage() {
   ];
   const folderCount = (catId: string | null) => catId === null ? allActiveTodos.filter(t => t.category_id === null).length : allActiveTodos.filter(t => t.category_id === catId).length;
 
-  // ── カスタムコリジョン：フォルダドラッグ時はフォルダのみ対象 ──
-  const collisionDetection: CollisionDetection = (args) => {
-    const activeId = String(args.active.id);
-    const cats = categoriesRef.current;
-    if (cats.some(c => c.id === activeId)) {
-      const catIdSet = new Set(cats.map(c => c.id));
-      return closestCenter({
-        ...args,
-        droppableContainers: args.droppableContainers.filter(c => catIdSet.has(String(c.id))),
-      });
-    }
-    return closestCenter(args);
-  };
 
   // ── アクション ────────────────────────────────────────────
   const addTodo = async () => {
@@ -704,14 +697,23 @@ export default function TeamPage() {
     await supabase.from("categories").update({ color }).eq("id", id);
   };
 
-  // ── ドラッグハンドラー（1つのDndContext） ─────────────────
+  const moveFolder = async (id: string, direction: "up" | "down") => {
+    const idx = categories.findIndex(c => c.id === id);
+    if (idx === -1) return;
+    const newIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= categories.length) return;
+    saveSnapshot(todos, categories);
+    const reordered = arrayMove(categories, idx, newIdx).map((c, i) => ({ ...c, order_index: i }));
+    setCategories(reordered);
+    await Promise.all(reordered.map(c =>
+      supabase.from("categories").update({ order_index: c.order_index }).eq("id", c.id)
+    ));
+  };
+
+  // ── ドラッグハンドラー（タスクのみ） ─────────────────────
   const handleDragStart = (e: DragStartEvent) => {
     draggingRef.current = true;
     setActiveDragId(String(e.active.id));
-    // フォルダドラッグ開始時に現在の順序を保存（undo用）
-    if (categoriesRef.current.some(c => c.id === String(e.active.id))) {
-      categoriesBeforeDragRef.current = [...categoriesRef.current];
-    }
   };
 
   const handleDragOver = (_event: DragOverEvent) => {};
@@ -721,27 +723,6 @@ export default function TeamPage() {
     setActiveDragId(null);
 
     const activeId = String(active.id);
-
-    // フォルダの並び替え
-    if (categoriesBeforeDragRef.current) {
-      const before = categoriesBeforeDragRef.current;
-      categoriesBeforeDragRef.current = null;
-      if (over && active.id !== over.id) {
-        const oId = String(over.id);
-        const oldIdx = before.findIndex(c => c.id === activeId);
-        const newIdx = before.findIndex(c => c.id === oId);
-        if (oldIdx !== -1 && newIdx !== -1) {
-          saveSnapshot(todos, before);
-          const reordered = arrayMove(before, oldIdx, newIdx).map((c, i) => ({ ...c, order_index: i }));
-          setCategories(reordered);
-          await Promise.all(reordered.map(c =>
-            supabase.from("categories").update({ order_index: c.order_index }).eq("id", c.id)
-          ));
-        }
-      }
-      draggingRef.current = false;
-      return;
-    }
 
     if (!over || active.id === over.id) {
       draggingRef.current = false;
@@ -791,26 +772,26 @@ export default function TeamPage() {
   };
 
   const activeDragTodo = activeDragId ? todos.find(t => t.id === activeDragId) : null;
-  const activeDragCategory = activeDragId ? categories.find(c => c.id === activeDragId) : null;
   const activeCategory = categories.find(c => c.id === activeCategoryId);
   const toggleSelect = (id: string) => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const sharedItemProps = { onToggleSelect: toggleSelect, onToggle: toggleTodo, onDelete: deleteTodo, onMove: moveTodo, categories };
 
-  const folderProps = (cat: Category) => ({
-    category: cat,
-    isActive: !showAllGroups && activeCategoryId === cat.id,
-    taskCount: folderCount(cat.id),
-    onClick: () => { if (selectedIds.size > 0) bulkMove(cat.id); else { setActiveCategoryId(cat.id); setShowAllGroups(false); } },
-    onDelete: () => deleteCategory(cat.id),
-    onEdit: editCategory,
-    onColorChange: updateCategoryColor,
-  });
-
-  const folderList = (strategy: typeof verticalListSortingStrategy | typeof horizontalListSortingStrategy) => (
-    <SortableContext items={categories.map(c => c.id)} strategy={strategy}>
-      {categories.map(cat => <SortableFolder key={cat.id} {...folderProps(cat)} />)}
-    </SortableContext>
-  );
+  const folderItems = categories.map((cat, idx) => (
+    <FolderItem
+      key={cat.id}
+      category={cat}
+      isActive={!showAllGroups && activeCategoryId === cat.id}
+      taskCount={folderCount(cat.id)}
+      onClick={() => { if (selectedIds.size > 0) bulkMove(cat.id); else { setActiveCategoryId(cat.id); setShowAllGroups(false); } }}
+      onDelete={() => deleteCategory(cat.id)}
+      onEdit={editCategory}
+      onColorChange={updateCategoryColor}
+      onMoveUp={() => moveFolder(cat.id, "up")}
+      onMoveDown={() => moveFolder(cat.id, "down")}
+      isFirst={idx === 0}
+      isLast={idx === categories.length - 1}
+    />
+  ));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -846,7 +827,7 @@ export default function TeamPage() {
       </div>
 
       <div className="max-w-4xl mx-auto p-4">
-        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <div className="flex gap-4">
 
             {/* PC フォルダサイドバー */}
@@ -856,7 +837,7 @@ export default function TeamPage() {
                 count={allActiveTodos.length} isActive={showAllGroups}
                 onClick={() => { if (selectedIds.size > 0) bulkMove(null); else { setActiveCategoryId(null); setShowAllGroups(true); } }}
               />
-              {folderList(verticalListSortingStrategy)}
+              {folderItems}
               <div className="mt-2">
                 {showCategoryInput ? (
                   <div className="flex flex-col gap-1">
@@ -889,7 +870,19 @@ export default function TeamPage() {
                   count={allActiveTodos.length} isActive={showAllGroups}
                   onClick={() => { if (selectedIds.size > 0) bulkMove(null); else { setActiveCategoryId(null); setShowAllGroups(true); } }}
                 />
-                {folderList(horizontalListSortingStrategy)}
+                {categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => { if (selectedIds.size > 0) bulkMove(cat.id); else { setActiveCategoryId(cat.id); setShowAllGroups(false); } }}
+                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all select-none ${
+                      !showAllGroups && activeCategoryId === cat.id ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+                    <span className="text-xs font-medium">{cat.name}</span>
+                    <span className={`text-xs tabular-nums ${!showAllGroups && activeCategoryId === cat.id ? "text-slate-300" : "text-slate-400"}`}>{folderCount(cat.id)}</span>
+                  </button>
+                ))}
                 {showCategoryInput ? (
                   <div className="flex gap-1 flex-shrink-0 items-center">
                     <input autoFocus value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)}
@@ -995,7 +988,7 @@ export default function TeamPage() {
           </div>
 
           <DragOverlay>
-            {activeDragTodo && !activeDragCategory && (
+            {activeDragTodo && (
               selectedIds.has(activeDragTodo.id) && selectedIds.size > 1 ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-600 border border-indigo-500 shadow-xl text-sm text-white opacity-95">
                   <span className="w-1.5 h-1.5 rounded-full bg-white" />{selectedIds.size}件を移動中
