@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragOverlay,
   DragStartEvent,
   KeyboardSensor,
@@ -26,48 +27,153 @@ import { createClient } from "@/lib/supabase";
 import type { Category, Todo } from "@/lib/types";
 
 const CATEGORY_COLORS = [
-  "#6366f1", "#f59e0b", "#10b981", "#ef4444",
-  "#8b5cf6", "#06b6d4", "#f97316", "#ec4899",
+  "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6",
+  "#06b6d4", "#f97316", "#ec4899", "#14b8a6", "#84cc16",
 ];
 
-// ── フォルダ（左サイドバー用ドロップゾーン） ─────────────────
-function DroppableFolder({
-  id, label, color, count, isActive, onClick, onDelete,
-}: {
-  id: string; label: string; color?: string; count: number;
-  isActive: boolean; onClick: () => void; onDelete?: () => void;
+// ── 「すべて」ボタン（ドロップ対象） ────────────────────────
+function AllFolderButton({ count, isActive, isOver: isOverProp, onClick }: {
+  count: number; isActive: boolean; isOver: boolean; onClick: () => void;
 }) {
-  const { isOver, setNodeRef } = useDroppable({ id });
+  const { isOver, setNodeRef } = useDroppable({ id: "cat-all" });
   return (
     <div
       ref={setNodeRef}
       onClick={onClick}
-      className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all select-none ${
-        isOver
-          ? "bg-indigo-50 ring-2 ring-indigo-300"
-          : isActive
-          ? "bg-slate-800 text-white"
-          : "hover:bg-slate-100 text-slate-600"
+      className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all select-none ${
+        isOver || isOverProp ? "bg-indigo-50 ring-2 ring-indigo-300"
+        : isActive ? "bg-slate-800 text-white"
+        : "hover:bg-slate-100 text-slate-600"
       }`}
     >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        {color && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />}
-        <span className="truncate text-xs font-medium">{label}</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <span className={`text-xs tabular-nums ${isActive ? "text-slate-300" : "text-slate-400"}`}>{count}</span>
-        {onDelete && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className={`opacity-0 group-hover:opacity-100 transition-opacity ml-1 ${
-              isActive ? "text-slate-400 hover:text-red-300" : "text-slate-400 hover:text-red-400"
-            }`}
+      <span className="text-xs font-medium">すべて</span>
+      <span className={`text-xs tabular-nums ${isActive ? "text-slate-300" : "text-slate-400"}`}>{count}</span>
+    </div>
+  );
+}
+
+// ── フォルダ（並び替え・名前編集・色変更対応） ───────────────
+function SortableFolder({
+  category, isActive, isOver, taskCount, onClick, onDelete, onEdit, onColorChange,
+}: {
+  category: Category; isActive: boolean; isOver: boolean; taskCount: number;
+  onClick: () => void; onDelete: () => void;
+  onEdit: (id: string, name: string) => void;
+  onColorChange: (id: string, color: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(category.name);
+  const [showColors, setShowColors] = useState(false);
+  const colorRef = useRef<HTMLDivElement>(null);
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: category.id });
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) setShowColors(false);
+    };
+    if (showColors) document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [showColors]);
+
+  const confirmEdit = () => {
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== category.name) onEdit(category.id, trimmed);
+    setIsEditing(false);
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      onClick={onClick}
+      className={`group flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer transition-all select-none ${
+        isOver ? "bg-indigo-50 ring-2 ring-indigo-300"
+        : isActive ? "bg-slate-800 text-white"
+        : "hover:bg-slate-100 text-slate-600"
+      }`}
+    >
+      {/* ドラッグハンドル */}
+      <button
+        {...attributes} {...listeners}
+        onClick={e => e.stopPropagation()}
+        className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing flex-shrink-0 touch-none transition-opacity"
+      >
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-12a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+        </svg>
+      </button>
+
+      {/* カラードット（クリックで色選択） */}
+      <div ref={colorRef} className="relative flex-shrink-0">
+        <button
+          onClick={e => { e.stopPropagation(); setShowColors(v => !v); }}
+          className="w-3 h-3 rounded-full hover:scale-125 transition-transform"
+          style={{ background: category.color }}
+        />
+        {showColors && (
+          <div
+            className="absolute left-0 top-5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 grid grid-cols-5 gap-1.5 w-28"
+            onClick={e => e.stopPropagation()}
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+            {CATEGORY_COLORS.map(c => (
+              <button
+                key={c}
+                onClick={() => { onColorChange(category.id, c); setShowColors(false); }}
+                className={`w-4 h-4 rounded-full hover:scale-125 transition-transform ${
+                  category.color === c ? "ring-2 ring-offset-1 ring-slate-500" : ""
+                }`}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
         )}
+      </div>
+
+      {/* フォルダ名（ダブルクリックで編集） */}
+      {isEditing ? (
+        <input
+          autoFocus
+          value={editName}
+          onChange={e => setEditName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") setIsEditing(false); }}
+          onBlur={confirmEdit}
+          onClick={e => e.stopPropagation()}
+          className={`flex-1 min-w-0 bg-transparent text-xs font-medium focus:outline-none border-b ${
+            isActive ? "border-white text-white" : "border-slate-400 text-slate-700"
+          }`}
+        />
+      ) : (
+        <span
+          className="truncate text-xs font-medium flex-1 min-w-0"
+          onDoubleClick={e => { e.stopPropagation(); setEditName(category.name); setIsEditing(true); }}
+        >
+          {category.name}
+        </span>
+      )}
+
+      {/* 件数・編集・削除 */}
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        <span className={`text-xs tabular-nums ${isActive ? "text-slate-300" : "text-slate-400"}`}>
+          {taskCount}
+        </span>
+        <button
+          onClick={e => { e.stopPropagation(); setEditName(category.name); setIsEditing(true); }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+        >
+          <svg className={`w-3 h-3 ${isActive ? "text-slate-300 hover:text-white" : "text-slate-400 hover:text-slate-600"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <svg className={`w-3 h-3 ${isActive ? "text-slate-400 hover:text-red-300" : "text-slate-400 hover:text-red-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -320,6 +426,7 @@ export default function TeamPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkMenu, setShowBulkMenu] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [overFolderId, setOverFolderId] = useState<string | null>(null);
   const bulkMenuRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
@@ -515,52 +622,90 @@ export default function TeamPage() {
     await supabase.from("todos").update({ category_id: null }).eq("category_id", id);
   };
 
+  const editCategory = async (id: string, name: string) => {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, name } : c));
+    await supabase.from("categories").update({ name }).eq("id", id);
+  };
+
+  const updateCategoryColor = async (id: string, color: string) => {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, color } : c));
+    await supabase.from("categories").update({ color }).eq("id", id);
+  };
+
   const handleDragStart = (e: DragStartEvent) => {
     draggingRef.current = true;
     setActiveDragId(e.active.id as string);
   };
 
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const overId = event.over?.id as string | undefined;
+    if (!overId) { setOverFolderId(null); return; }
+    const isCat = categories.some(c => c.id === overId) || overId === "cat-all";
+    setOverFolderId(isCat ? overId : null);
+  }, [categories]);
+
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveDragId(null);
+    setOverFolderId(null);
+    draggingRef.current = false;
     const { active, over } = event;
     if (!over) return;
 
+    const activeId = active.id as string;
     const overId = over.id as string;
-    const activeTask = todos.find(t => t.id === active.id);
-    if (!activeTask) return;
 
-    // ドラッグしたタスクが複数選択に含まれているか
-    const isBulk = selectedIds.has(active.id as string) && selectedIds.size > 1;
-
-    // ① 左サイドバーのフォルダにドロップ
-    if (overId.startsWith("cat-")) {
-      const catId = overId === "cat-all" ? null : overId.replace("cat-", "");
-      if (isBulk) { await bulkMove(catId); } else { await moveTodo(active.id as string, catId); }
+    // ── フォルダの並び替え ──
+    const isActiveCategory = categories.some(c => c.id === activeId);
+    if (isActiveCategory) {
+      const isOverCategory = categories.some(c => c.id === overId);
+      if (!isOverCategory) return;
+      const oldIdx = categories.findIndex(c => c.id === activeId);
+      const newIdx = categories.findIndex(c => c.id === overId);
+      if (oldIdx === newIdx) return;
+      const reordered = arrayMove(categories, oldIdx, newIdx);
+      setCategories(reordered);
+      await Promise.all(reordered.map((c, i) =>
+        supabase.from("categories").update({ order_index: i }).eq("id", c.id)
+      ));
       return;
     }
 
-    // ② 空セクションにドロップ
+    // ── タスクのドラッグ ──
+    const activeTask = todos.find(t => t.id === activeId);
+    if (!activeTask) return;
+    const isBulk = selectedIds.has(activeId) && selectedIds.size > 1;
+
+    // ① 「すべて」にドロップ
+    if (overId === "cat-all") {
+      if (isBulk) await bulkMove(null); else await moveTodo(activeId, null);
+      return;
+    }
+
+    // ② フォルダにドロップ
+    if (categories.some(c => c.id === overId)) {
+      if (isBulk) await bulkMove(overId); else await moveTodo(activeId, overId);
+      return;
+    }
+
+    // ③ 空セクションにドロップ
     if (overId.startsWith("section-")) {
       const catId = overId === "section-null" ? null : overId.replace("section-", "");
-      if (isBulk) { await bulkMove(catId); } else { await moveTodo(active.id as string, catId); }
+      if (isBulk) await bulkMove(catId); else await moveTodo(activeId, catId);
       return;
     }
 
-    // ③ 別タスクにドロップ
+    // ④ 別タスクにドロップ
     const overTask = todos.find(t => t.id === overId);
     if (!overTask) return;
 
     if (activeTask.category_id !== overTask.category_id) {
-      // 別フォルダ → 移動（一括 or 単体）
-      if (isBulk) { await bulkMove(overTask.category_id); } else { await moveTodo(active.id as string, overTask.category_id); }
+      if (isBulk) await bulkMove(overTask.category_id); else await moveTodo(activeId, overTask.category_id);
     } else {
-      // 同フォルダ → 並び替え（単体のみ）
       const sameFolder = allActiveTodos.filter(t => t.category_id === activeTask.category_id);
-      const oldIdx = sameFolder.findIndex(t => t.id === active.id);
-      const newIdx = sameFolder.findIndex(t => t.id === over.id);
+      const oldIdx = sameFolder.findIndex(t => t.id === activeId);
+      const newIdx = sameFolder.findIndex(t => t.id === overId);
       if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
       const reordered = arrayMove(sameFolder, oldIdx, newIdx);
-      // order_index も更新してソートが元に戻らないようにする
       const reorderedWithIdx = reordered.map((t, i) => ({ ...t, order_index: i }));
       const updatedIds = new Set(reorderedWithIdx.map(t => t.id));
       setTodos(prev => [...reorderedWithIdx, ...prev.filter(t => !updatedIds.has(t.id))]);
@@ -568,7 +713,6 @@ export default function TeamPage() {
         supabase.from("todos").update({ order_index: t.order_index }).eq("id", t.id)
       ));
     }
-    draggingRef.current = false;
   };
 
   const copyUrl = () => {
@@ -615,26 +759,34 @@ export default function TeamPage() {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4">
             {/* ── フォルダサイドバー（PC） ── */}
-            <aside className="hidden sm:flex flex-col w-44 flex-shrink-0 gap-0.5">
+            <aside className="hidden sm:flex flex-col w-48 flex-shrink-0 gap-0.5">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1 mb-2">フォルダ</p>
-              <DroppableFolder
-                id="cat-all" label="すべて" count={allActiveTodos.length}
+              <AllFolderButton
+                count={allActiveTodos.length}
                 isActive={showAllGroups}
+                isOver={overFolderId === "cat-all"}
                 onClick={() => { setActiveCategoryId(null); setShowAllGroups(true); }}
               />
-              {categories.map(cat => (
-                <DroppableFolder
-                  key={cat.id} id={`cat-${cat.id}`}
-                  label={cat.name} color={cat.color} count={folderCount(cat.id)}
-                  isActive={!showAllGroups && activeCategoryId === cat.id}
-                  onClick={() => { setActiveCategoryId(cat.id); setShowAllGroups(false); }}
-                  onDelete={() => deleteCategory(cat.id)}
-                />
-              ))}
+              <SortableContext items={categories.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                {categories.map(cat => (
+                  <SortableFolder
+                    key={cat.id}
+                    category={cat}
+                    isActive={!showAllGroups && activeCategoryId === cat.id}
+                    isOver={overFolderId === cat.id}
+                    taskCount={folderCount(cat.id)}
+                    onClick={() => { setActiveCategoryId(cat.id); setShowAllGroups(false); }}
+                    onDelete={() => deleteCategory(cat.id)}
+                    onEdit={editCategory}
+                    onColorChange={updateCategoryColor}
+                  />
+                ))}
+              </SortableContext>
               <div className="mt-2">
                 {showCategoryInput ? (
                   <div className="flex flex-col gap-1">
@@ -680,18 +832,23 @@ export default function TeamPage() {
             <div className="flex-1 min-w-0">
               {/* モバイル：フォルダタブ */}
               <div className="flex sm:hidden gap-2 mb-4 overflow-x-auto pb-1">
-                <DroppableFolder
-                  id="cat-all" label="すべて" count={allActiveTodos.length}
+                <AllFolderButton
+                  count={allActiveTodos.length}
                   isActive={showAllGroups}
+                  isOver={overFolderId === "cat-all"}
                   onClick={() => { setActiveCategoryId(null); setShowAllGroups(true); }}
                 />
                 {categories.map(cat => (
-                  <DroppableFolder
-                    key={cat.id} id={`cat-${cat.id}`} label={cat.name}
-                    color={cat.color} count={folderCount(cat.id)}
+                  <SortableFolder
+                    key={cat.id}
+                    category={cat}
                     isActive={!showAllGroups && activeCategoryId === cat.id}
+                    isOver={overFolderId === cat.id}
+                    taskCount={folderCount(cat.id)}
                     onClick={() => { setActiveCategoryId(cat.id); setShowAllGroups(false); }}
                     onDelete={() => deleteCategory(cat.id)}
+                    onEdit={editCategory}
+                    onColorChange={updateCategoryColor}
                   />
                 ))}
                 {showCategoryInput ? (
