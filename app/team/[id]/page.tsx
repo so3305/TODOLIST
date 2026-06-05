@@ -870,19 +870,53 @@ export default function TeamPage() {
                   count={allActiveTodos.length} isActive={showAllGroups}
                   onClick={() => { if (selectedIds.size > 0) bulkMove(null); else { setActiveCategoryId(null); setShowAllGroups(true); } }}
                 />
-                {categories.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => { if (selectedIds.size > 0) bulkMove(cat.id); else { setActiveCategoryId(cat.id); setShowAllGroups(false); } }}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all select-none ${
-                      !showAllGroups && activeCategoryId === cat.id ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: cat.color }} />
-                    <span className="text-xs font-medium">{cat.name}</span>
-                    <span className={`text-xs tabular-nums ${!showAllGroups && activeCategoryId === cat.id ? "text-slate-300" : "text-slate-400"}`}>{folderCount(cat.id)}</span>
-                  </button>
-                ))}
+                {categories.map((cat, idx) => {
+                  const isActive = !showAllGroups && activeCategoryId === cat.id;
+                  return (
+                    <div
+                      key={cat.id}
+                      className={`flex-shrink-0 flex items-center gap-1 px-2 py-2 rounded-lg transition-all select-none ${
+                        isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      <button
+                        onClick={() => { if (selectedIds.size > 0) bulkMove(cat.id); else { setActiveCategoryId(cat.id); setShowAllGroups(false); } }}
+                        className="flex items-center gap-1.5 min-w-0"
+                      >
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+                        <span className="text-xs font-medium whitespace-nowrap">{cat.name}</span>
+                        <span className={`text-xs tabular-nums flex-shrink-0 ${isActive ? "text-slate-300" : "text-slate-400"}`}>{folderCount(cat.id)}</span>
+                      </button>
+                      <div className="flex items-center flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => moveFolder(cat.id, "up")}
+                          disabled={idx === 0}
+                          className={`p-0.5 disabled:opacity-20 disabled:cursor-not-allowed ${isActive ? "text-slate-400 hover:text-white" : "text-slate-300 hover:text-slate-600"}`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => moveFolder(cat.id, "down")}
+                          disabled={idx === categories.length - 1}
+                          className={`p-0.5 disabled:opacity-20 disabled:cursor-not-allowed ${isActive ? "text-slate-400 hover:text-white" : "text-slate-300 hover:text-slate-600"}`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                        <FolderMenu
+                          category={cat}
+                          isActive={isActive}
+                          onEdit={editCategory}
+                          onColorChange={updateCategoryColor}
+                          onDelete={() => deleteCategory(cat.id)}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
                 {showCategoryInput ? (
                   <div className="flex gap-1 flex-shrink-0 items-center">
                     <input autoFocus value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)}
