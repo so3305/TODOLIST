@@ -770,7 +770,7 @@ export default function TeamPage() {
                 count={allActiveTodos.length}
                 isActive={showAllGroups}
                 isOver={overFolderId === "cat-all"}
-                onClick={() => { setActiveCategoryId(null); setShowAllGroups(true); }}
+                onClick={() => { if (selectedIds.size > 0) { bulkMove(null); } else { setActiveCategoryId(null); setShowAllGroups(true); } }}
               />
               <SortableContext items={categories.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 {categories.map(cat => (
@@ -780,7 +780,7 @@ export default function TeamPage() {
                     isActive={!showAllGroups && activeCategoryId === cat.id}
                     isOver={overFolderId === cat.id}
                     taskCount={folderCount(cat.id)}
-                    onClick={() => { setActiveCategoryId(cat.id); setShowAllGroups(false); }}
+                    onClick={() => { if (selectedIds.size > 0) { bulkMove(cat.id); } else { setActiveCategoryId(cat.id); setShowAllGroups(false); } }}
                     onDelete={() => deleteCategory(cat.id)}
                     onEdit={editCategory}
                     onColorChange={updateCategoryColor}
@@ -836,7 +836,7 @@ export default function TeamPage() {
                   count={allActiveTodos.length}
                   isActive={showAllGroups}
                   isOver={overFolderId === "cat-all"}
-                  onClick={() => { setActiveCategoryId(null); setShowAllGroups(true); }}
+                  onClick={() => { if (selectedIds.size > 0) { bulkMove(null); } else { setActiveCategoryId(null); setShowAllGroups(true); } }}
                 />
                 {categories.map(cat => (
                   <SortableFolder
@@ -845,7 +845,7 @@ export default function TeamPage() {
                     isActive={!showAllGroups && activeCategoryId === cat.id}
                     isOver={overFolderId === cat.id}
                     taskCount={folderCount(cat.id)}
-                    onClick={() => { setActiveCategoryId(cat.id); setShowAllGroups(false); }}
+                    onClick={() => { if (selectedIds.size > 0) { bulkMove(cat.id); } else { setActiveCategoryId(cat.id); setShowAllGroups(false); } }}
                     onDelete={() => deleteCategory(cat.id)}
                     onEdit={editCategory}
                     onColorChange={updateCategoryColor}
