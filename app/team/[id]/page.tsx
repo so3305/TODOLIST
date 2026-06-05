@@ -334,10 +334,10 @@ export default function TeamPage() {
       supabase.from("todos").select("*").eq("team_id", teamId).order("order_index"),
       supabase.from("categories").select("*").eq("team_id", teamId).order("order_index"),
     ]);
-    if (te) console.error("todos fetch error:", te);
-    if (ce) console.error("categories fetch error:", ce);
-    if (t) setTodos(t);
-    if (c) setCategories(c);
+    if (te?.message) console.error("todos fetch error:", te.message, te.code);
+    if (ce?.message) console.error("categories fetch error:", ce.message, ce.code);
+    if (t !== null) setTodos(t);
+    if (c !== null) setCategories(c);
   }, [supabase, teamId]);
 
   // ドラッグ中はリアルタイムの再ロードを遅延させてちらつきを防ぐ
