@@ -194,7 +194,7 @@ function SortableFolder({
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: isDragging ? undefined : CSS.Transform.toString(transform), transition: isDragging ? undefined : transition, opacity: isDragging ? 0.3 : 1 }}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 }}
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2 py-2 rounded-lg cursor-pointer transition-all select-none flex-shrink-0 ${
         isActive ? "bg-slate-800 text-white" : "hover:bg-slate-100 text-slate-600"
@@ -995,16 +995,6 @@ export default function TeamPage() {
           </div>
 
           <DragOverlay>
-            {activeDragCategory && (
-              <div className="flex items-center gap-1.5 px-2 py-2 rounded-lg bg-slate-800 text-white shadow-xl select-none cursor-grabbing opacity-95">
-                <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-12a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
-                </svg>
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: activeDragCategory.color }} />
-                <span className="truncate text-xs font-medium">{activeDragCategory.name}</span>
-                <span className="text-xs tabular-nums text-slate-300">{folderCount(activeDragCategory.id)}</span>
-              </div>
-            )}
             {activeDragTodo && !activeDragCategory && (
               selectedIds.has(activeDragTodo.id) && selectedIds.size > 1 ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-600 border border-indigo-500 shadow-xl text-sm text-white opacity-95">
