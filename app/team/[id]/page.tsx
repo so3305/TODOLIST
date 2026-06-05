@@ -330,10 +330,12 @@ export default function TeamPage() {
   const draggingRef = useRef(false);
 
   const load = useMemo(() => async () => {
-    const [{ data: t }, { data: c }] = await Promise.all([
+    const [{ data: t, error: te }, { data: c, error: ce }] = await Promise.all([
       supabase.from("todos").select("*").eq("team_id", teamId).order("order_index"),
       supabase.from("categories").select("*").eq("team_id", teamId).order("order_index"),
     ]);
+    if (te) console.error("todos fetch error:", te);
+    if (ce) console.error("categories fetch error:", ce);
     if (t) setTodos(t);
     if (c) setCategories(c);
   }, [supabase, teamId]);
@@ -360,6 +362,14 @@ export default function TeamPage() {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load, loadSafe, supabase, teamId]);
+
+  // ポーリング：リアルタイムが届かない場合の保険（4秒ごと）
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!draggingRef.current) load();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -417,7 +427,12 @@ export default function TeamPage() {
     };
     setTodos(prev => [...prev, newTodo]);
     setInput("");
-    await supabase.from("todos").insert(newTodo);
+    const { error } = await supabase.from("todos").insert(newTodo);
+    if (error) {
+      console.error("addTodo error:", error);
+      setTodos(prev => prev.filter(t => t.id !== newTodo.id));
+    }
+    load();
   };
 
   const toggleTodo = async (id: string) => {
@@ -425,37 +440,53 @@ export default function TeamPage() {
     if (!todo) return;
     const u = { ...todo, done: !todo.done, done_at: !todo.done ? new Date().toISOString() : null };
     setTodos(prev => prev.map(t => t.id === id ? u : t));
-    await supabase.from("todos").update({ done: u.done, done_at: u.done_at }).eq("id", id);
+    const { error } = await supabase.from("todos").update({ done: u.done, done_at: u.done_at }).eq("id", id);
+    if (error) console.error("toggleTodo error:", error);
+    load();
   };
 
   const deleteTodo = async (id: string) => {
     setTodos(prev => prev.filter(t => t.id !== id));
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
-    await supabase.from("todos").delete().eq("id", id);
+    const { error } = await supabase.from("todos").delete().eq("id", id);
+    if (error) console.error("deleteTodo error:", error);
+    load();
   };
 
   const moveTodo = async (id: string, categoryId: string | null) => {
     setTodos(prev => prev.map(t => t.id === id ? { ...t, category_id: categoryId } : t));
-    await supabase.from("todos").update({ category_id: categoryId }).eq("id", id);
+    const { error } = await supabase.from("todos").update({ category_id: categoryId }).eq("id", id);
+    if (error) console.error("moveTodo error:", error);
+    load();
   };
 
   const bulkMove = async (categoryId: string | null) => {
     const ids = Array.from(selectedIds);
     setTodos(prev => prev.map(t => ids.includes(t.id) ? { ...t, category_id: categoryId } : t));
     setSelectedIds(new Set());
-    await supabase.from("todos").update({ category_id: categoryId }).in("id", ids);
+    const { error } = await supabase.from("todos").update({ category_id: categoryId }).in("id", ids);
+    if (error) console.error("bulkMove error:", error);
+    load();
   };
 
   const clearDone = async () => {
     const ids = doneTodos.map(t => t.id);
     setTodos(prev => prev.filter(t => !ids.includes(t.id)));
-    if (ids.length > 0) await supabase.from("todos").delete().in("id", ids);
+    if (ids.length > 0) {
+      const { error } = await supabase.from("todos").delete().in("id", ids);
+      if (error) console.error("clearDone error:", error);
+    }
+    load();
   };
 
   const clearDoneForFolder = async (folderId: string | null) => {
     const ids = allDoneTodos.filter(t => t.category_id === folderId).map(t => t.id);
     setTodos(prev => prev.filter(t => !ids.includes(t.id)));
-    if (ids.length > 0) await supabase.from("todos").delete().in("id", ids);
+    if (ids.length > 0) {
+      const { error } = await supabase.from("todos").delete().in("id", ids);
+      if (error) console.error("clearDoneForFolder error:", error);
+    }
+    load();
   };
 
   const addCategory = async () => {
@@ -468,7 +499,12 @@ export default function TeamPage() {
     setCategories(prev => [...prev, newCat]);
     setNewCategoryName("");
     setShowCategoryInput(false);
-    await supabase.from("categories").insert(newCat);
+    const { error } = await supabase.from("categories").insert(newCat);
+    if (error) {
+      console.error("addCategory error:", error);
+      setCategories(prev => prev.filter(c => c.id !== newCat.id));
+    }
+    load();
   };
 
   const deleteCategory = async (id: string) => {
