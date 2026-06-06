@@ -235,16 +235,19 @@ function FolderItem({
 
 // ── タスクカード ─────────────────────────────────────────────
 function SortableTodoItem({
-  todo, isSelected, onToggleSelect, onToggle, onDelete, onMove, categories,
+  todo, isSelected, onToggleSelect, onToggle, onDelete, onEdit, onMove, categories,
 }: {
   todo: Todo; isSelected: boolean;
   onToggleSelect: (id: string) => void;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string, text: string) => void;
   onMove: (id: string, categoryId: string | null) => void;
   categories: Category[];
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(todo.text);
   const menuRef = useRef<HTMLDivElement>(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id, disabled: todo.done });
@@ -256,6 +259,12 @@ function SortableTodoItem({
     if (showMenu) document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [showMenu]);
+
+  const confirmEdit = () => {
+    const trimmed = editText.trim();
+    if (trimmed && trimmed !== todo.text) onEdit(todo.id, trimmed);
+    setIsEditing(false);
+  };
 
   return (
     <div
@@ -304,9 +313,20 @@ function SortableTodoItem({
         )}
       </button>
 
-      <span className={`flex-1 text-sm truncate ${todo.done ? "line-through text-slate-400" : "text-slate-700"}`}>
-        {todo.text}
-      </span>
+      {isEditing ? (
+        <input
+          autoFocus
+          value={editText}
+          onChange={e => setEditText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") { setEditText(todo.text); setIsEditing(false); } }}
+          onBlur={confirmEdit}
+          className="flex-1 text-sm bg-transparent border-b border-slate-400 focus:outline-none text-slate-700"
+        />
+      ) : (
+        <span className={`flex-1 text-sm truncate ${todo.done ? "line-through text-slate-400" : "text-slate-700"}`}>
+          {todo.text}
+        </span>
+      )}
 
       <div ref={menuRef} className="relative flex-shrink-0">
         <button
@@ -319,6 +339,15 @@ function SortableTodoItem({
         </button>
         {showMenu && (
           <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1 w-40 overflow-hidden">
+            <button
+              onClick={() => { setEditText(todo.text); setIsEditing(true); setShowMenu(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2 text-slate-600 border-b border-slate-100"
+            >
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              名前を変更
+            </button>
             <p className="text-xs text-slate-400 px-3 py-1.5 border-b border-slate-100">フォルダに移動</p>
             <button
               onClick={() => { onMove(todo.id, null); setShowMenu(false); }}
@@ -358,7 +387,7 @@ function SortableTodoItem({
 // ── フォルダグループ ─────────────────────────────────────────
 function TaskGroup({
   folderId, label, color, todos, doneTodos, selectedIds,
-  onToggleSelect, onToggle, onDelete, onMove, onClearDone, categories,
+  onToggleSelect, onToggle, onDelete, onEdit, onMove, onClearDone, categories,
 }: {
   folderId: string | null; label: string; color?: string;
   todos: Todo[]; doneTodos: Todo[];
@@ -366,6 +395,7 @@ function TaskGroup({
   onToggleSelect: (id: string) => void;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string, text: string) => void;
   onMove: (id: string, categoryId: string | null) => void;
   onClearDone: () => void;
   categories: Category[];
@@ -408,7 +438,7 @@ function TaskGroup({
                     key={todo.id} todo={todo}
                     isSelected={selectedIds.has(todo.id)}
                     onToggleSelect={onToggleSelect}
-                    onToggle={onToggle} onDelete={onDelete}
+                    onToggle={onToggle} onDelete={onDelete} onEdit={onEdit}
                     onMove={onMove} categories={categories}
                   />
                 ))}
@@ -428,7 +458,7 @@ function TaskGroup({
                     key={todo.id} todo={todo}
                     isSelected={selectedIds.has(todo.id)}
                     onToggleSelect={onToggleSelect}
-                    onToggle={onToggle} onDelete={onDelete}
+                    onToggle={onToggle} onDelete={onDelete} onEdit={onEdit}
                     onMove={onMove} categories={categories}
                   />
                 ))}
@@ -638,6 +668,12 @@ export default function TeamPage() {
     load();
   };
 
+  const editTodo = async (id: string, text: string) => {
+    saveSnapshot(todos, categories);
+    setTodos(prev => prev.map(t => t.id === id ? { ...t, text } : t));
+    await supabase.from("todos").update({ text }).eq("id", id);
+  };
+
   const bulkMove = async (categoryId: string | null) => {
     saveSnapshot(todos, categories);
     const ids = Array.from(selectedIds);
@@ -774,7 +810,7 @@ export default function TeamPage() {
   const activeDragTodo = activeDragId ? todos.find(t => t.id === activeDragId) : null;
   const activeCategory = categories.find(c => c.id === activeCategoryId);
   const toggleSelect = (id: string) => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const sharedItemProps = { onToggleSelect: toggleSelect, onToggle: toggleTodo, onDelete: deleteTodo, onMove: moveTodo, categories };
+  const sharedItemProps = { onToggleSelect: toggleSelect, onToggle: toggleTodo, onDelete: deleteTodo, onEdit: editTodo, onMove: moveTodo, categories };
 
   const folderItems = categories.map((cat, idx) => (
     <FolderItem
